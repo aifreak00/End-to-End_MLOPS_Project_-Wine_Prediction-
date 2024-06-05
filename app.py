@@ -1,61 +1,68 @@
-from flask import Flask, render_template, request
-import os 
+from fastapi import FastAPI, Request, Form
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+import os
 import numpy as np
 import pandas as pd
 from src.End_To_End_Wine_Prediction.pipeline.prediction import PredictionPipeline
 
+app = FastAPI()
+templates = Jinja2Templates(directory="templates")
 
-app = Flask(__name__) # initializing a flask app
+# Mount the static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
+@app.get("/", response_class=HTMLResponse)
+def home_page(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
-@app.route('/',methods=['GET'])  # route to display the home page
-def homePage():
-    return render_template("index.html")
-
-
-
-@app.route('/train',methods=['GET'])  # route to train the pipeline
+@app.get("/train")
 def training():
     os.system("python main.py")
-    return "Training Successful!" 
+    return "Training Successful!"
 
+@app.post("/predict", response_class=HTMLResponse)
+def predict(
+    request: Request,
+    fixed_acidity: float = Form(...),
+    volatile_acidity: float = Form(...),
+    citric_acid: float = Form(...),
+    residual_sugar: float = Form(...),
+    chlorides: float = Form(...),
+    free_sulfur_dioxide: float = Form(...),
+    total_sulfur_dioxide: float = Form(...),
+    density: float = Form(...),
+    pH: float = Form(...),
+    sulphates: float = Form(...),
+    alcohol: float = Form(...),
+):
+    try:
+        data = [
+            fixed_acidity,
+            volatile_acidity,
+            citric_acid,
+            residual_sugar,
+            chlorides,
+            free_sulfur_dioxide,
+            total_sulfur_dioxide,
+            density,
+            pH,
+            sulphates,
+            alcohol,
+        ]
+        data = np.array(data).reshape(1, 11)
 
+        obj = PredictionPipeline()
+        predict = obj.predict(data)
 
-
-@app.route('/predict',methods=['POST','GET']) # route to show the predictions in a web UI
-def index():
-    if request.method == 'POST':
-        try:
-            #  reading the inputs given by the user
-            fixed_acidity =float(request.form['fixed_acidity'])
-            volatile_acidity =float(request.form['volatile_acidity'])
-            citric_acid =float(request.form['citric_acid'])
-            residual_sugar =float(request.form['residual_sugar'])
-            chlorides =float(request.form['chlorides'])
-            free_sulfur_dioxide =float(request.form['free_sulfur_dioxide'])
-            total_sulfur_dioxide =float(request.form['total_sulfur_dioxide'])
-            density =float(request.form['density'])
-            pH =float(request.form['pH'])
-            sulphates =float(request.form['sulphates'])
-            alcohol =float(request.form['alcohol'])
-       
-         
-            data = [fixed_acidity,volatile_acidity,citric_acid,residual_sugar,chlorides,free_sulfur_dioxide,total_sulfur_dioxide,density,pH,sulphates,alcohol]
-            data = np.array(data).reshape(1, 11)
-            
-            obj = PredictionPipeline()
-            predict = obj.predict(data)
-
-            return render_template('results.html', prediction = str(predict))
-
-        except Exception as e:
-            print('The Exception message is: ',e)
-            return 'something is wrong'
-
-    else:
-        return render_template('index.html')
-
-
+        return templates.TemplateResponse(
+            "results.html", {"request": request, "prediction": str(predict)}
+        )
+    except Exception as e:
+        print("The Exception message is: ", e)
+        return "Something went wrong"
 
 if __name__ == "__main__":
-	app.run(host="0.0.0.0", port = 8080)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8080)
